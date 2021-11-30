@@ -15,6 +15,8 @@
 
 syntax = "proto3";
 
+option go_package = "github.com/hyperledger/sawtooth-sdk-go/protobuf/consensus_pb2";
+
 // --== Data Structures ==--
 
 // A consensus-related message sent between peers
@@ -65,10 +67,17 @@ message ConsensusStateEntry {
 
 // Sent to connect with the validator
 message ConsensusRegisterRequest {
+  message Protocol {
+    string name = 1;
+    string version = 2;
+  }
+
   // The name of this consensus engine
   string name = 1;
   // The version of this consensus engine
   string version = 2;
+  // Any additional name/version pairs the consensus engine supports
+  repeated Protocol additional_protocols = 3;
 }
 
 message ConsensusRegisterResponse {
@@ -132,6 +141,17 @@ message ConsensusNotifyBlockInvalid {
 message ConsensusNotifyBlockCommit {
   bytes block_id = 1;
 }
+
+// The engine has been activated
+message ConsensusNotifyEngineActivated {
+  // Startup Info
+  ConsensusBlock chain_head = 1;
+  repeated ConsensusPeerInfo peers = 2;
+  ConsensusPeerInfo local_peer_info = 3;
+}
+
+// The engine has been deactivated
+message ConsensusNotifyEngineDeactivated {}
 
 // Confirm that the notification was received. The validator message
 // correlation id is used to determine which notification this is an ack for.
