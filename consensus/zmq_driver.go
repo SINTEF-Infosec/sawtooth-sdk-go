@@ -23,16 +23,16 @@ const (
 )
 
 type ZmQDriver struct {
-	engine     Engine
-	connection *messaging.ZmqConnection
-	updates    chan Update
-	exit       bool
+	engine        Engine
+	connection    *messaging.ZmqConnection
+	updates       chan Update
+	exit          bool
 }
 
 func NewZmqDriver(engine Engine) *ZmQDriver {
 	return &ZmQDriver{
-		engine:  engine,
-		updates: make(chan Update, UpdateQueueSize),
+		engine:        engine,
+		updates:       make(chan Update, UpdateQueueSize),
 	}
 }
 
@@ -49,16 +49,18 @@ func (z *ZmQDriver) Start(endpoint string) {
 	}
 	z.connection = conn
 
-	log.Info("registering...")
+	log.Info("registering consensus engine...")
 	startUpState, err := z.register()
 	if err != nil {
 		log.Printf("could not register: %v", err)
 		os.Exit(-1)
 	}
+	log.Info("consensus engine registered")
 
 	if startUpState == nil {
-		log.Info("Waiting for activation")
+		log.Info("waiting for activation...")
 		startUpState, err = z.waitUntilActive()
+		log.Info("consensus engine activated")
 		if err != nil {
 			log.Fatalf("failed to wait activation: %v", err)
 		}
@@ -68,7 +70,6 @@ func (z *ZmQDriver) Start(endpoint string) {
 	go z.work()
 
 	// Start the underlying engine
-	log.Info("Starting consensus engine")
 	z.engine.Start(z.updates, NewZmqService(z.connection), startUpState)
 }
 
@@ -78,8 +79,6 @@ func (z *ZmQDriver) Stop() {
 }
 
 func (z *ZmQDriver) register() (*StartupState, error) {
-	// ToDo: Wait for the connection to be ready => really necessary?
-
 	var additionalProtocols []*consensus_pb2.ConsensusRegisterRequest_Protocol
 	for _, p := range z.engine.AdditionalProtocols() {
 		additionalProtocols = append(additionalProtocols,
@@ -103,7 +102,6 @@ func (z *ZmQDriver) register() (*StartupState, error) {
 	}
 
 	for {
-		log.Debug("sending consensus register request")
 		corId, err := z.connection.SendNewMsg(validator_pb2.Message_CONSENSUS_REGISTER_REQUEST, data)
 		if err != nil {
 			log.Errorf("could not send msg: %v", err)
@@ -111,7 +109,6 @@ func (z *ZmQDriver) register() (*StartupState, error) {
 		}
 
 		// Receives the corresponding response:
-		log.Debug("waiting for register response")
 		status := make(chan error)
 		messages := make(chan *validator_pb2.Message)
 		go func() {
@@ -147,7 +144,6 @@ func (z *ZmQDriver) register() (*StartupState, error) {
 		}
 
 		if response.Status == consensus_pb2.ConsensusRegisterResponse_OK {
-			log.Debug("consensus register response ok: moving forward")
 			if response.ChainHead != nil && response.LocalPeerInfo != nil {
 				return &StartupState{
 					ChainHead:     response.ChainHead,
@@ -191,8 +187,6 @@ func (z *ZmQDriver) waitUntilActive() (*StartupState, error) {
 		}
 
 		if msg.MessageType == validator_pb2.Message_CONSENSUS_NOTIFY_ENGINE_ACTIVATED {
-			log.Debug("Received activation message!")
-
 			var engineActivatedMsg consensus_pb2.ConsensusNotifyEngineActivated
 			if err := proto.Unmarshal(msg.Content, &engineActivatedMsg); err != nil {
 				log.Fatalf("could not unmarshal ConsensusNotifyEngineActivated payload: %v", err)
@@ -225,7 +219,7 @@ func (z *ZmQDriver) work() {
 
 		msgType, msgData, err := z.process(msg, corId)
 		if err != nil {
-			log.Printf("error while processing message: %v", err)
+			log.Printf("error while processing message (corId: %s): %v", corId, err)
 			continue
 		}
 

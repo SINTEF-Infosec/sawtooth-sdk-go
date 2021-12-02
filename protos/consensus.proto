@@ -457,6 +457,8 @@ message ConsensusSettingsGetResponse {
     NOT_READY = 4;
 
     UNKNOWN_BLOCK = 5;
+
+    NOT_ACTIVE_ENGINE = 6;
   }
 
   Status status = 1;
@@ -480,6 +482,8 @@ message ConsensusStateGetResponse {
     NOT_READY = 4;
 
     UNKNOWN_BLOCK = 5;
+
+    NOT_ACTIVE_ENGINE = 6;
   }
 
   Status status = 1;

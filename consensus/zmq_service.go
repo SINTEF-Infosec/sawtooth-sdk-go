@@ -9,7 +9,7 @@ import (
 )
 
 type ZmqService struct {
-	connection messaging.Connection
+	connection    messaging.Connection
 }
 
 func NewZmqService(connection messaging.Connection) *ZmqService {
@@ -575,12 +575,12 @@ func (zs *ZmqService) GetSettings(blockId []byte, settings []string) []*consensu
 	}
 
 	if response.Status == consensus_pb2.ConsensusSettingsGetResponse_UNKNOWN_BLOCK {
-		log.Printf("could not initialize block, unknown block: %v", msg.MessageType)
+		log.Printf("could not get settings: unknown block: %v", response.Status)
 		return nil
 	}
 
 	if response.Status != consensus_pb2.ConsensusSettingsGetResponse_OK {
-		log.Printf("could not initialize block: %v", msg.MessageType)
+		log.Printf("could not get settings: not ok: %v", response.Status)
 		return nil
 	}
 
