@@ -7,14 +7,14 @@ import (
 	consensus_pb2 "github.com/hyperledger/sawtooth-sdk-go/protobuf/consensus_pb2"
 	"github.com/hyperledger/sawtooth-sdk-go/protobuf/validator_pb2"
 	zmq "github.com/pebbe/zmq4"
-	log "github.com/sirupsen/logrus"
 	"os"
 	"time"
 )
 
 type Update struct {
-	Type validator_pb2.Message_MessageType
-	Data interface{}
+	Type     validator_pb2.Message_MessageType
+	SenderId string
+	Data     interface{}
 }
 
 const (
@@ -23,46 +23,48 @@ const (
 )
 
 type ZmQDriver struct {
-	engine        Engine
-	connection    *messaging.ZmqConnection
-	updates       chan Update
-	exit          bool
+	engine     Engine
+	connection *messaging.ZmqConnection
+	updates    chan Update
+	exit       bool
 }
 
 func NewZmqDriver(engine Engine) *ZmQDriver {
 	return &ZmQDriver{
-		engine:        engine,
-		updates:       make(chan Update, UpdateQueueSize),
+		engine:  engine,
+		updates: make(chan Update, UpdateQueueSize),
 	}
 }
 
 func (z *ZmQDriver) Start(endpoint string) {
-	log.SetLevel(log.DebugLevel)
 
 	zmqContext, err := zmq.NewContext()
 	if err != nil {
-		log.Fatalf("could not create ZMQ context: %v", err)
+		logger.Errorf("could not create ZMQ context: %v", err)
+		os.Exit(-1)
 	}
 	conn, err := messaging.NewConnection(zmqContext, zmq.DEALER, endpoint, false)
 	if err != nil {
-		log.Fatalf("could not create new zmq connection: %v", err)
+		logger.Errorf("could not create new zmq connection: %v", err)
+		os.Exit(-1)
 	}
 	z.connection = conn
 
-	log.Info("registering consensus engine...")
+	logger.Info("registering consensus engine...")
 	startUpState, err := z.register()
 	if err != nil {
-		log.Printf("could not register: %v", err)
+		logger.Errorf("could not register: %v", err)
 		os.Exit(-1)
 	}
-	log.Info("consensus engine registered")
+	logger.Info("consensus engine registered")
 
 	if startUpState == nil {
-		log.Info("waiting for activation...")
+		logger.Info("waiting for activation...")
 		startUpState, err = z.waitUntilActive()
-		log.Info("consensus engine activated")
+		logger.Info("consensus engine activated")
 		if err != nil {
-			log.Fatalf("failed to wait activation: %v", err)
+			logger.Errorf("failed to wait activation: %v", err)
+			os.Exit(-1)
 		}
 	}
 
@@ -97,14 +99,14 @@ func (z *ZmQDriver) register() (*StartupState, error) {
 
 	data, err := proto.Marshal(request)
 	if err != nil {
-		log.Printf("could not marshal: %v", err)
+		logger.Errorf("could not marshal: %v", err)
 		return nil, err
 	}
 
 	for {
-		corId, err := z.connection.SendNewMsg(validator_pb2.Message_CONSENSUS_REGISTER_REQUEST, data)
+		corId, err := z.connection.SendNewMsg(validator_pb2.Message_CONSENSUS_REGISTER_REQUEST, true, data)
 		if err != nil {
-			log.Errorf("could not send msg: %v", err)
+			logger.Errorf("could not send msg: %v", err)
 			return nil, err
 		}
 
@@ -122,11 +124,11 @@ func (z *ZmQDriver) register() (*StartupState, error) {
 		var msg *validator_pb2.Message
 		select {
 		case err := <-status:
-			log.Errorf("could not recv msg: %v")
+			logger.Errorf("could not recv msg: %v")
 			return nil, err
 		case msg = <-messages:
 		case <-time.After(RegisterTimeout * time.Second):
-			log.Debug("timeout, restarting...")
+			logger.Debug("timeout, restarting...")
 			continue
 		}
 
@@ -134,12 +136,12 @@ func (z *ZmQDriver) register() (*StartupState, error) {
 		var response consensus_pb2.ConsensusRegisterResponse
 		err = proto.Unmarshal(msg.Content, &response)
 		if err != nil {
-			log.Printf("could not unmarshal consensus register response")
+			logger.Errorf("could not unmarshal consensus register response")
 			return nil, err
 		}
 
 		if response.Status == consensus_pb2.ConsensusRegisterResponse_NOT_READY {
-			log.Debug("consensus register response: not ready, continuing...")
+			logger.Debug("consensus register response: not ready, continuing...")
 			continue
 		}
 
@@ -162,34 +164,35 @@ func (z *ZmQDriver) register() (*StartupState, error) {
 func (z *ZmQDriver) waitUntilActive() (*StartupState, error) {
 	for {
 		// Receives a message
-		corId, msg, err := z.connection.RecvMsg()
+		_, msg, err := z.connection.RecvMsg()
 		if err != nil {
-			log.Printf("error while receiving message: %v", err)
+			logger.Errorf("error while receiving message: %v", err)
 			continue
 		}
 
 		// Acknowledge the message
 		ackData, err := proto.Marshal(&consensus_pb2.ConsensusNotifyAck{})
 		if err != nil {
-			log.Printf("could not prepare ack: %v", err)
+			logger.Errorf("could not prepare ack: %v", err)
 			continue
 		}
 		msgData, err := proto.Marshal(&validator_pb2.Message{
 			MessageType:   validator_pb2.Message_CONSENSUS_NOTIFY_ACK,
 			Content:       ackData,
-			CorrelationId: corId,
+			CorrelationId: msg.GetCorrelationId(),
 		})
 
-		err = z.connection.SendMsg(validator_pb2.Message_CONSENSUS_NOTIFY_ACK, msgData, corId)
+		err = z.connection.SendMsg(validator_pb2.Message_CONSENSUS_NOTIFY_ACK, msgData, msg.GetCorrelationId())
 		if err != nil {
-			log.Printf("could not send ack msg: %v", err)
+			logger.Errorf("could not send ack msg: %v", err)
 			continue
 		}
 
 		if msg.MessageType == validator_pb2.Message_CONSENSUS_NOTIFY_ENGINE_ACTIVATED {
 			var engineActivatedMsg consensus_pb2.ConsensusNotifyEngineActivated
 			if err := proto.Unmarshal(msg.Content, &engineActivatedMsg); err != nil {
-				log.Fatalf("could not unmarshal ConsensusNotifyEngineActivated payload: %v", err)
+				logger.Errorf("could not unmarshal ConsensusNotifyEngineActivated payload: %v", err)
+				os.Exit(-1)
 			}
 
 			return &StartupState{
@@ -198,7 +201,7 @@ func (z *ZmQDriver) waitUntilActive() (*StartupState, error) {
 				LocalPeerInfo: engineActivatedMsg.LocalPeerInfo,
 			}, nil
 		} else {
-			log.Warnf("received message of type %v while waiting for activation", msg.MessageType)
+			logger.Warnf("received message of type %v while waiting for activation", msg.MessageType)
 		}
 	}
 }
@@ -211,15 +214,15 @@ func (z *ZmQDriver) work() {
 		}
 
 		// Receives a message
-		corId, msg, err := z.connection.RecvMsg()
+		senderId, msg, err := z.connection.RecvMsg()
 		if err != nil {
-			log.Printf("error while receiving message: %v", err)
+			logger.Errorf("error while receiving message: %v", err)
 			continue
 		}
 
-		msgType, msgData, err := z.process(msg, corId)
+		msgType, msgData, err := z.process(msg, msg.GetCorrelationId())
 		if err != nil {
-			log.Printf("error while processing message (corId: %s): %v", corId, err)
+			logger.Errorf("error while processing message (corId: %s): %v", msg.GetCorrelationId(), err)
 			continue
 		}
 
@@ -228,7 +231,7 @@ func (z *ZmQDriver) work() {
 		}
 
 		// Putting the msgType and data to the queue
-		z.updates <- Update{Type: msgType, Data: msgData}
+		z.updates <- Update{Type: msgType, SenderId: senderId, Data: msgData}
 	}
 }
 

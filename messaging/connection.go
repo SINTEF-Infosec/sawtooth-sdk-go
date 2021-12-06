@@ -55,8 +55,8 @@ func LoadMsg(data []byte) (msg *validator_pb2.Message, err error) {
 
 type Connection interface {
 	SendData(id string, data []byte) error
-	SendNewMsg(t validator_pb2.Message_MessageType, c []byte) (corrId string, err error)
-	SendNewMsgTo(id string, t validator_pb2.Message_MessageType, c []byte) (corrId string, err error)
+	SendNewMsg(t validator_pb2.Message_MessageType, register bool,  c []byte) (corrId string, err error)
+	SendNewMsgTo(id string, t validator_pb2.Message_MessageType, register bool, c []byte) (corrId string, err error)
 	SendMsg(t validator_pb2.Message_MessageType, c []byte, corrId string) error
 	SendMsgTo(id string, t validator_pb2.Message_MessageType, c []byte, corrId string) error
 	RecvData() (string, []byte, error)
@@ -175,16 +175,18 @@ func (zc *ZmqConnection) SendData(id string, data []byte) error {
 
 // SendNewMsg creates a new validator message, assigns a new correlation id,
 // serializes it, and sends it. It returns the correlation id created.
-func (zc *ZmqConnection) SendNewMsg(t validator_pb2.Message_MessageType, c []byte) (corrId string, err error) {
-	return zc.SendNewMsgTo("", t, c)
+func (zc *ZmqConnection) SendNewMsg(t validator_pb2.Message_MessageType, register bool, c []byte) (corrId string, err error) {
+	return zc.SendNewMsgTo("", t, register, c)
 }
 
 // SendNewMsgTo sends a new message validator message with the given id sent as
 // the first part of the message. This is required when sending to a ROUTER
 // socket, so it knows where to route the message.
-func (zc *ZmqConnection) SendNewMsgTo(id string, t validator_pb2.Message_MessageType, c []byte) (corrId string, err error) {
+func (zc *ZmqConnection) SendNewMsgTo(id string, t validator_pb2.Message_MessageType, register bool, c []byte) (corrId string, err error) {
 	corrId = GenerateId()
-	zc.registeredId[corrId] = true
+	if register {
+		zc.registeredId[corrId] = true
+	}
 	return corrId, zc.SendMsgTo(id, t, c, corrId)
 }
 

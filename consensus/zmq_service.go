@@ -2,17 +2,21 @@ package consensus
 
 import (
 	"github.com/golang/protobuf/proto"
+	"github.com/hyperledger/sawtooth-sdk-go/logging"
 	"github.com/hyperledger/sawtooth-sdk-go/messaging"
 	consensus_pb2 "github.com/hyperledger/sawtooth-sdk-go/protobuf/consensus_pb2"
 	"github.com/hyperledger/sawtooth-sdk-go/protobuf/validator_pb2"
 	"log"
 )
 
+var logger = logging.Get()
+
 type ZmqService struct {
-	connection    messaging.Connection
+	connection messaging.Connection
 }
 
 func NewZmqService(connection messaging.Connection) *ZmqService {
+	logger.Infof("Connection ID: %s", connection.Identity())
 	return &ZmqService{
 		connection: connection,
 	}
@@ -22,11 +26,9 @@ func NewZmqService(connection messaging.Connection) *ZmqService {
 
 func (zs *ZmqService) SendTo(receiverId []byte, messageType validator_pb2.Message_MessageType, payload []byte) {
 	request := &consensus_pb2.ConsensusSendToRequest{
-		PeerId: receiverId,
-		Message: &consensus_pb2.ConsensusPeerMessage{
-			MessageType: messageType.String(),
-			Content:     payload,
-		},
+		ReceiverId:  receiverId,
+		MessageType: messageType.String(),
+		Content:     payload,
 	}
 
 	requestBytes, err := proto.Marshal(request)
@@ -35,7 +37,7 @@ func (zs *ZmqService) SendTo(receiverId []byte, messageType validator_pb2.Messag
 		return
 	}
 
-	corId, err := zs.connection.SendNewMsgTo(string(receiverId), messageType, requestBytes)
+	corId, err := zs.connection.SendNewMsgTo(string(receiverId), validator_pb2.Message_CONSENSUS_SEND_TO_REQUEST, false, requestBytes)
 	if err != nil {
 		log.Printf("could not send msg: %v", err)
 		return
@@ -62,10 +64,8 @@ func (zs *ZmqService) SendTo(receiverId []byte, messageType validator_pb2.Messag
 
 func (zs *ZmqService) Broadcast(messageType validator_pb2.Message_MessageType, payload []byte) {
 	request := &consensus_pb2.ConsensusBroadcastRequest{
-		Message: &consensus_pb2.ConsensusPeerMessage{
-			MessageType: messageType.String(),
-			Content:     payload,
-		},
+		MessageType: messageType.String(),
+		Content:     payload,
 	}
 
 	requestBytes, err := proto.Marshal(request)
@@ -74,7 +74,7 @@ func (zs *ZmqService) Broadcast(messageType validator_pb2.Message_MessageType, p
 		return
 	}
 
-	corId, err := zs.connection.SendNewMsg(messageType, requestBytes)
+	corId, err := zs.connection.SendNewMsg(validator_pb2.Message_CONSENSUS_BROADCAST_REQUEST, true, requestBytes)
 	if err != nil {
 		log.Printf("could not send msg: %v", err)
 		return
@@ -114,7 +114,7 @@ func (zs *ZmqService) InitializeBlock(previousId []byte) {
 		return
 	}
 
-	corId, err := zs.connection.SendNewMsg(validator_pb2.Message_CONSENSUS_INITIALIZE_BLOCK_REQUEST, requestBytes)
+	corId, err := zs.connection.SendNewMsg(validator_pb2.Message_CONSENSUS_INITIALIZE_BLOCK_REQUEST, true, requestBytes)
 	if err != nil {
 		log.Printf("could not send msg: %v", err)
 		return
@@ -159,7 +159,7 @@ func (zs *ZmqService) SummarizeBlock() []byte {
 		return nil
 	}
 
-	corId, err := zs.connection.SendNewMsg(validator_pb2.Message_CONSENSUS_SUMMARIZE_BLOCK_REQUEST, requestBytes)
+	corId, err := zs.connection.SendNewMsg(validator_pb2.Message_CONSENSUS_SUMMARIZE_BLOCK_REQUEST, true, requestBytes)
 	if err != nil {
 		log.Printf("could not send msg: %v", err)
 		return nil
@@ -208,7 +208,7 @@ func (zs *ZmqService) FinalizeBlock(data []byte) []byte {
 		return nil
 	}
 
-	corId, err := zs.connection.SendNewMsg(validator_pb2.Message_CONSENSUS_FINALIZE_BLOCK_REQUEST, requestBytes)
+	corId, err := zs.connection.SendNewMsg(validator_pb2.Message_CONSENSUS_FINALIZE_BLOCK_REQUEST, true, requestBytes)
 	if err != nil {
 		log.Printf("could not send msg: %v", err)
 		return nil
@@ -255,7 +255,7 @@ func (zs *ZmqService) CancelBlock() {
 		return
 	}
 
-	corId, err := zs.connection.SendNewMsg(validator_pb2.Message_CONSENSUS_CANCEL_BLOCK_REQUEST, requestBytes)
+	corId, err := zs.connection.SendNewMsg(validator_pb2.Message_CONSENSUS_CANCEL_BLOCK_REQUEST, true, requestBytes)
 	if err != nil {
 		log.Printf("could not send msg: %v", err)
 		return
@@ -297,7 +297,7 @@ func (zs *ZmqService) CheckBlocks(priority [][]byte) {
 		return
 	}
 
-	corId, err := zs.connection.SendNewMsg(validator_pb2.Message_CONSENSUS_CHECK_BLOCKS_REQUEST, requestBytes)
+	corId, err := zs.connection.SendNewMsg(validator_pb2.Message_CONSENSUS_CHECK_BLOCKS_REQUEST, true, requestBytes)
 	if err != nil {
 		log.Printf("could not send msg: %v", err)
 		return
@@ -339,7 +339,7 @@ func (zs *ZmqService) CommitBlocks(blockId []byte) {
 		return
 	}
 
-	corId, err := zs.connection.SendNewMsg(validator_pb2.Message_CONSENSUS_COMMIT_BLOCK_REQUEST, requestBytes)
+	corId, err := zs.connection.SendNewMsg(validator_pb2.Message_CONSENSUS_COMMIT_BLOCK_REQUEST, true, requestBytes)
 	if err != nil {
 		log.Printf("could not send msg: %v", err)
 		return
@@ -381,7 +381,7 @@ func (zs *ZmqService) IgnoreBlock(blockId []byte) {
 		return
 	}
 
-	corId, err := zs.connection.SendNewMsg(validator_pb2.Message_CONSENSUS_IGNORE_BLOCK_REQUEST, requestBytes)
+	corId, err := zs.connection.SendNewMsg(validator_pb2.Message_CONSENSUS_IGNORE_BLOCK_REQUEST, true, requestBytes)
 	if err != nil {
 		log.Printf("could not send msg: %v", err)
 		return
@@ -423,7 +423,7 @@ func (zs *ZmqService) FailBlock(blockId []byte) {
 		return
 	}
 
-	corId, err := zs.connection.SendNewMsg(validator_pb2.Message_CONSENSUS_FAIL_BLOCK_REQUEST, requestBytes)
+	corId, err := zs.connection.SendNewMsg(validator_pb2.Message_CONSENSUS_FAIL_BLOCK_REQUEST, true, requestBytes)
 	if err != nil {
 		log.Printf("could not send msg: %v", err)
 		return
@@ -467,7 +467,7 @@ func (zs *ZmqService) GetBlocks(blockIds [][]byte) []*consensus_pb2.ConsensusBlo
 		return nil
 	}
 
-	corId, err := zs.connection.SendNewMsg(validator_pb2.Message_CONSENSUS_BLOCKS_GET_REQUEST, requestBytes)
+	corId, err := zs.connection.SendNewMsg(validator_pb2.Message_CONSENSUS_BLOCKS_GET_REQUEST, true, requestBytes)
 	if err != nil {
 		log.Printf("could not send msg: %v", err)
 		return nil
@@ -509,7 +509,7 @@ func (zs *ZmqService) GetChainHead() *consensus_pb2.ConsensusBlock {
 		return nil
 	}
 
-	corId, err := zs.connection.SendNewMsg(validator_pb2.Message_CONSENSUS_CHAIN_HEAD_GET_REQUEST, requestBytes)
+	corId, err := zs.connection.SendNewMsg(validator_pb2.Message_CONSENSUS_CHAIN_HEAD_GET_REQUEST, true, requestBytes)
 	if err != nil {
 		log.Printf("could not send msg: %v", err)
 		return nil
@@ -554,7 +554,7 @@ func (zs *ZmqService) GetSettings(blockId []byte, settings []string) []*consensu
 		return nil
 	}
 
-	corId, err := zs.connection.SendNewMsg(validator_pb2.Message_CONSENSUS_SETTINGS_GET_REQUEST, requestBytes)
+	corId, err := zs.connection.SendNewMsg(validator_pb2.Message_CONSENSUS_SETTINGS_GET_REQUEST, true, requestBytes)
 	if err != nil {
 		log.Printf("could not send msg: %v", err)
 		return nil
@@ -599,7 +599,7 @@ func (zs *ZmqService) GetState(blockId []byte, addresses []string) []*consensus_
 		return nil
 	}
 
-	corId, err := zs.connection.SendNewMsg(validator_pb2.Message_CONSENSUS_STATE_GET_REQUEST, requestBytes)
+	corId, err := zs.connection.SendNewMsg(validator_pb2.Message_CONSENSUS_STATE_GET_REQUEST, true, requestBytes)
 	if err != nil {
 		log.Printf("could not send msg: %v", err)
 		return nil
