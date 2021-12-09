@@ -16,7 +16,6 @@ type ZmqService struct {
 }
 
 func NewZmqService(connection messaging.Connection) *ZmqService {
-	logger.Infof("Connection ID: %s", connection.Identity())
 	return &ZmqService{
 		connection: connection,
 	}

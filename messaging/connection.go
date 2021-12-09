@@ -55,7 +55,7 @@ func LoadMsg(data []byte) (msg *validator_pb2.Message, err error) {
 
 type Connection interface {
 	SendData(id string, data []byte) error
-	SendNewMsg(t validator_pb2.Message_MessageType, register bool,  c []byte) (corrId string, err error)
+	SendNewMsg(t validator_pb2.Message_MessageType, register bool, c []byte) (corrId string, err error)
 	SendNewMsgTo(id string, t validator_pb2.Message_MessageType, register bool, c []byte) (corrId string, err error)
 	SendMsg(t validator_pb2.Message_MessageType, c []byte, corrId string) error
 	SendMsgTo(id string, t validator_pb2.Message_MessageType, c []byte, corrId string) error
@@ -234,7 +234,7 @@ func (zc *ZmqConnection) RecvData() (string, []byte, error) {
 // ZmqConnection wraps a ROUTER socket, id will be the identity of the sender.
 // Otherwise, id will be "".
 func (zc *ZmqConnection) RecvMsg() (string, *validator_pb2.Message, error) {
-	storedMsg := <- zc.unexpectedMsg
+	storedMsg := <-zc.unexpectedMsg
 	return storedMsg.Id, storedMsg.Msg, nil
 }
 
@@ -250,7 +250,7 @@ func (zc *ZmqConnection) RecvMsgWithId(corrId string) (string, *validator_pb2.Me
 	}
 
 	for {
-		storedMsg := <- zc.expectedMsg
+		storedMsg := <-zc.expectedMsg
 
 		if storedMsg.Msg != nil && storedMsg.Msg.GetCorrelationId() == corrId {
 			return storedMsg.Id, storedMsg.Msg, nil
