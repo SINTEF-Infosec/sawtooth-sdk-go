@@ -36,7 +36,7 @@ func (zs *ZmqService) SendTo(receiverId []byte, messageType validator_pb2.Messag
 		return
 	}
 
-	corId, err := zs.connection.SendNewMsgTo(string(receiverId), validator_pb2.Message_CONSENSUS_SEND_TO_REQUEST, false, requestBytes)
+	corId, err := zs.connection.SendNewMsgTo("", validator_pb2.Message_CONSENSUS_SEND_TO_REQUEST, true, requestBytes)
 	if err != nil {
 		log.Printf("could not send msg: %v", err)
 		return
